@@ -1,0 +1,46 @@
+spring:
+  application:
+    name: ai-transfer
+  profiles:
+    active: dev
+  thymeleaf:
+    prefix: classpath:/templates/
+    suffix: .html
+    mode: HTML
+    encoding: UTF-8
+    cache: true
+    check-template: true
+    servlet:
+      content-type: text/html
+
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  type-aliases-package: com.dave.ai.transfer.domain.entity
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+server:
+  port: 8080
+
+
+logging:
+  level:
+    root: INFO
+    com.dave.ai.transfer: DEBUG
+  file:
+    name: logs/ai-transfer.log
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+ai:
+  transfer:
+    approval:
+      base-url: http://127.0.0.1:8080/saleProduct/approval
+    kafka:
+      topic:
+        transfer-order-created: ai-transfer.transfer-order-created
+    snowflake:
+      worker-id: 1
+      datacenter-id: 1

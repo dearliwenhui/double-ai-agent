@@ -1,0 +1,18 @@
+package com.dave.ai.transfer.mapper.base;
+
+import com.dave.ai.transfer.model.BbProduct;
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+
+/**
+* @author Dave.Li
+* @description 针对表【bb_product(商品信息表)】的数据库操作Mapper
+* @createDate 2026-05-13 09:48:33
+* @Entity com.dave.ai.transfer.domain.BbProduct
+*/
+public interface BbProductMapper extends BaseMapper<BbProduct> {
+
+}
+
+
+
+

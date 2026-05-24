@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.dave.ai.transfer.mapper.base.BbSalesRecordMapper">
+
+    <resultMap id="BaseResultMap" type="com.dave.ai.transfer.model.BbSalesRecord">
+            <id property="id" column="id" />
+            <result property="warehouseId" column="warehouse_id" />
+            <result property="productId" column="product_id" />
+            <result property="saleDate" column="sale_date" />
+            <result property="quantity" column="quantity" />
+            <result property="revenue" column="revenue" />
+            <result property="createdTime" column="created_time" />
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id,warehouse_id,product_id,sale_date,quantity,revenue,
+        created_time
+    </sql>
+</mapper>

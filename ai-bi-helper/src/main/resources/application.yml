@@ -1,0 +1,16 @@
+spring:
+  application:
+    name: ai-bi-helper
+  profiles:
+    active: dev
+logging:
+  level:
+    root: INFO
+    com.dave.ai.bi.helper: INFO
+  file:
+    name: logs/ai-bi-helper.log
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+server:
+  port: 8081

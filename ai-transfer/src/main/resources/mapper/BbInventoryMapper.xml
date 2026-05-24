@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.dave.ai.transfer.mapper.base.BbInventoryMapper">
+
+    <resultMap id="BaseResultMap" type="com.dave.ai.transfer.model.BbInventory">
+            <id property="id" column="id" />
+            <result property="warehouseId" column="warehouse_id" />
+            <result property="productId" column="product_id" />
+            <result property="quantity" column="quantity" />
+            <result property="lockedQuantity" column="locked_quantity" />
+            <result property="updatedTime" column="updated_time" />
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id,warehouse_id,product_id,quantity,locked_quantity,updated_time
+    </sql>
+</mapper>
