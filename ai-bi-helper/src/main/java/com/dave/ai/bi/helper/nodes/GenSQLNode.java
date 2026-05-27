@@ -3,17 +3,13 @@ package com.dave.ai.bi.helper.nodes;
 import cn.hutool.core.text.StrBuilder;
 import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.action.NodeAction;
+import com.dave.ai.bi.helper.application.rag.dto.SchemaRetrievalContext;
+import com.dave.ai.bi.helper.application.rag.service.SchemaRetrievalPipeline;
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.rag.advisor.RetrievalAugmentationAdvisor;
-import org.springframework.ai.rag.generation.augmentation.ContextualQueryAugmenter;
-import org.springframework.ai.rag.preretrieval.query.transformation.RewriteQueryTransformer;
-import org.springframework.ai.rag.retrieval.search.VectorStoreDocumentRetriever;
-import org.springframework.ai.vectorstore.VectorStore;
 import reactor.core.publisher.Flux;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 @Slf4j
@@ -21,11 +17,11 @@ public class GenSQLNode implements NodeAction {
 
 
     private final ChatClient.Builder chatClientBuilder;
-    private final VectorStore vectorStore;
+    private final SchemaRetrievalPipeline schemaRetrievalPipeline;
 
-    public GenSQLNode(ChatClient.Builder chatClientBuilder, VectorStore vectorStore) {
+    public GenSQLNode(ChatClient.Builder chatClientBuilder, SchemaRetrievalPipeline schemaRetrievalPipeline) {
         this.chatClientBuilder = chatClientBuilder;
-        this.vectorStore = vectorStore;
+        this.schemaRetrievalPipeline = schemaRetrievalPipeline;
     }
 
     /**
@@ -47,23 +43,9 @@ public class GenSQLNode implements NodeAction {
     public Map<String, Object> apply(OverAllState state) throws Exception {
         // 从图状态中读取原始用户问题，作为后续检索增强和 SQL 生成的输入。
         String userInput = state.value("userInput", "");
-
-        // 在检索前先改写用户问题，让向量库可以用更清晰的查询表达召回库表结构和业务文档。
-        RewriteQueryTransformer rewriteQueryTransformer = RewriteQueryTransformer.builder().chatClientBuilder(chatClientBuilder).build();
-
-        // 组装 RAG 增强链路：
-        // 1. 先对用户问题做改写；
-        // 2. 再从向量库检索相关上下文；
-        // 3. 即使没有检索到上下文，也允许继续生成 SQL。
-        RetrievalAugmentationAdvisor retrievalAugmentationAdvisor = RetrievalAugmentationAdvisor.builder()
-                .queryTransformers(rewriteQueryTransformer)
-                .documentRetriever(VectorStoreDocumentRetriever
-                        .builder().vectorStore(vectorStore).build())
-                .queryAugmenter(ContextualQueryAugmenter.builder().allowEmptyContext(true).build())
-                .build();
+        SchemaRetrievalContext retrievalContext = schemaRetrievalPipeline.retrieve(userInput);
         // 创建提示词请求，挂载检索增强 advisor，并以流式方式接收模型输出的 SQL 片段。
         Flux<String> content = chatClientBuilder.build().prompt()
-                .advisors(retrievalAugmentationAdvisor)
                 // system 提示词用于约束模型角色、可用库表范围以及输出格式。
                 .system("""
                         你是一名专业的 SQL 生成助手。
@@ -89,9 +71,8 @@ public class GenSQLNode implements NodeAction {
                         - 不要输出 ```sql
                         - 不要输出任何额外字符
                         
-                        请基于提供的上下文生成 SQL。
-                        
-                        """)
+                        以下是已经为你筛选和整理好的 schema 上下文，请严格只基于这些内容生成 SQL：
+                        """ + "\n" + retrievalContext.assembledContext() + "\n")
                 // 原始用户问题作为 user message 传入，检索得到的上下文由 advisor 注入。
                 .user(userInput).stream().content();
         // 将流式返回的 SQL 片段拼接成完整 SQL。
@@ -100,6 +81,11 @@ public class GenSQLNode implements NodeAction {
         // 将生成结果写回图状态，供后续节点继续处理。
         String genSQL = strBuilder.toString();
         log.info("Generated SQL: {}", genSQL);
-        return Map.of("genSQL", genSQL);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("genSQL", genSQL);
+        result.put("retrievalContext", retrievalContext.assembledContext());
+        result.put("rewrittenQuery", retrievalContext.queryIntent().rewrittenQuery());
+        return result;
     }
 }

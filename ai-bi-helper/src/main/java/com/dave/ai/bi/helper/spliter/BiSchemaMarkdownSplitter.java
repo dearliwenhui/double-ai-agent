@@ -34,6 +34,10 @@ public class BiSchemaMarkdownSplitter extends TextSplitter {
     private static final String SECTION_PRIMARY_KEY = "主键";
     private static final String SECTION_UNIQUE_KEY = "唯一键";
     private static final String SECTION_FIELD_DEFINITION = "字段定义";
+    private static final String SECTION_RELATIONS = "关联关系";
+    private static final String SECTION_BUSINESS_RULES = "业务口径";
+    private static final String SECTION_QUERY_SCENARIOS = "常用查询场景";
+    private static final String TOP_LEVEL_SQL_RELATION_EXAMPLES = "6. 常用 SQL 关系示例";
     private static final String CHUNK_STRATEGY = "bi_schema_markdown_v2";
     private static final int FIELD_BATCH_SIZE = 8;
 
@@ -45,9 +49,9 @@ public class BiSchemaMarkdownSplitter extends TextSplitter {
             Map.entry(SECTION_PRIMARY_KEY, "primary_key"),
             Map.entry(SECTION_UNIQUE_KEY, "unique_key"),
             Map.entry(SECTION_FIELD_DEFINITION, "field_definition"),
-            Map.entry("关联关系", "relations"),
-            Map.entry("业务口径", "business_rules"),
-            Map.entry("常用查询场景", "query_scenarios")
+            Map.entry(SECTION_RELATIONS, "relations"),
+            Map.entry(SECTION_BUSINESS_RULES, "business_rules"),
+            Map.entry(SECTION_QUERY_SCENARIOS, "query_scenarios")
     );
 
     public List<Document> split(String markdown) {
@@ -152,6 +156,10 @@ public class BiSchemaMarkdownSplitter extends TextSplitter {
             if (sectionBody(block.content()).isBlank()) {
                 continue;
             }
+            if (TOP_LEVEL_SQL_RELATION_EXAMPLES.equals(block.title())) {
+                docs.addAll(splitTopLevelSqlRelationExamples(source, block, rootMetadata, chunkIndex));
+                continue;
+            }
             Map<String, Object> metadata = chunkMetadata(rootMetadata, chunkIndex.getAndIncrement(), chunkType);
             metadata.put("section", block.title());
             metadata.put("sectionKey", normalizeSectionKey(block.title()));
@@ -195,6 +203,19 @@ public class BiSchemaMarkdownSplitter extends TextSplitter {
         for (SubSectionBlock subSection : subSections) {
             if (SECTION_FIELD_DEFINITION.equals(subSection.title())) {
                 docs.addAll(splitFieldDefinitionSection(
+                        source,
+                        tableName,
+                        tableCnName,
+                        tableType,
+                        subSection,
+                        rootMetadata,
+                        commonMetadata,
+                        chunkIndex
+                ));
+                continue;
+            }
+            if (SECTION_RELATIONS.equals(subSection.title())) {
+                docs.addAll(splitRelationSection(
                         source,
                         tableName,
                         tableCnName,
@@ -301,7 +322,7 @@ public class BiSchemaMarkdownSplitter extends TextSplitter {
             metadata.put("fieldBatchCount", batchCount);
             metadata.put("fieldStartIndex", fromIndex);
             metadata.put("fieldEndIndex", toIndex - 1);
-            metadata.put("fieldNames", extractFieldNames(batchRows));
+            enrichFieldMetadata(metadata, batchRows);
 
             docs.add(createChunk(source, chunkText, metadata));
         }
@@ -325,6 +346,58 @@ public class BiSchemaMarkdownSplitter extends TextSplitter {
                 contextualizeTableSection(tableName, tableCnName, tableType, subSection.content()),
                 metadata
         );
+    }
+
+    private List<Document> splitRelationSection(Document source, String tableName, String tableCnName, String tableType,
+                                                SubSectionBlock subSection, Map<String, Object> rootMetadata,
+                                                Map<String, Object> commonMetadata, AtomicInteger chunkIndex) {
+        List<String> relationLines = extractBulletLines(extractSectionBody(subSection.content()));
+        if (relationLines.isEmpty()) {
+            return List.of(createPlainSubSectionChunk(
+                    source, tableName, tableCnName, tableType, subSection, rootMetadata, commonMetadata, chunkIndex
+            ));
+        }
+
+        List<Document> docs = new ArrayList<>();
+        for (String relationLine : relationLines) {
+            Map<String, Object> metadata = chunkMetadata(
+                    rootMetadata,
+                    chunkIndex.getAndIncrement(),
+                    "table_relation",
+                    commonMetadata
+            );
+            metadata.put("section", subSection.title());
+            metadata.put("sectionKey", normalizeSectionKey(subSection.title()));
+            enrichRelationMetadata(metadata, relationLine);
+            docs.add(createChunk(
+                    source,
+                    buildSingleRelationChunk(tableName, tableCnName, tableType, relationLine),
+                    metadata
+            ));
+        }
+        return docs;
+    }
+
+    private List<Document> splitTopLevelSqlRelationExamples(Document source, SectionBlock block,
+                                                            Map<String, Object> rootMetadata,
+                                                            AtomicInteger chunkIndex) {
+        List<String> relationLines = extractBulletLines(extractSectionBody(block.content()));
+        if (relationLines.isEmpty()) {
+            Map<String, Object> metadata = chunkMetadata(rootMetadata, chunkIndex.getAndIncrement(), "tail_section");
+            metadata.put("section", block.title());
+            metadata.put("sectionKey", normalizeSectionKey(block.title()));
+            return List.of(createChunk(source, block.content(), metadata));
+        }
+
+        List<Document> docs = new ArrayList<>();
+        for (String relationLine : relationLines) {
+            Map<String, Object> metadata = chunkMetadata(rootMetadata, chunkIndex.getAndIncrement(), "sql_relation_example");
+            metadata.put("section", block.title());
+            metadata.put("sectionKey", "sql_relation_examples");
+            enrichSqlExampleMetadata(metadata, relationLine);
+            docs.add(createChunk(source, buildTopLevelSqlRelationChunk(relationLine), metadata));
+        }
+        return docs;
     }
 
     private List<TableBlock> parseTableBlocks(String markdown) {
@@ -436,6 +509,144 @@ public class BiSchemaMarkdownSplitter extends TextSplitter {
             }
         }
         return names;
+    }
+
+    private void enrichFieldMetadata(Map<String, Object> metadata, List<String> rows) {
+        List<String> fieldNames = extractFieldNames(rows);
+        metadata.put("fieldNames", fieldNames);
+        metadata.put("fieldCount", fieldNames.size());
+        metadata.put("timeFields", fieldNames.stream().filter(this::isTimeField).toList());
+        metadata.put("metricFields", fieldNames.stream().filter(this::isMetricField).toList());
+        metadata.put("dimensionFields", fieldNames.stream()
+                .filter(name -> !isTimeField(name) && !isMetricField(name) && !isPrimaryLikeField(name))
+                .toList());
+    }
+
+    private void enrichRelationMetadata(Map<String, Object> metadata, String relationLine) {
+        RelationParts relationParts = parseArrowRelation(relationLine);
+        if (relationParts == null) {
+            return;
+        }
+        metadata.put("sourceTable", relationParts.sourceTable());
+        metadata.put("targetTable", relationParts.targetTable());
+        metadata.put("sourceField", relationParts.sourceField());
+        metadata.put("targetField", relationParts.targetField());
+        metadata.put("relationType", "join");
+        metadata.put("relationTables", List.of(relationParts.sourceTable(), relationParts.targetTable()));
+        metadata.put("relationFields", List.of(relationParts.sourceField(), relationParts.targetField()));
+        metadata.put("topics", inferTopics(relationParts.sourceTable(), relationParts.targetTable(), relationParts.sourceField(), relationParts.targetField()));
+    }
+
+    private void enrichSqlExampleMetadata(Map<String, Object> metadata, String relationLine) {
+        RelationParts relationParts = parseEqualsRelation(relationLine);
+        if (relationParts == null) {
+            return;
+        }
+        metadata.put("sourceTable", relationParts.sourceTable());
+        metadata.put("targetTable", relationParts.targetTable());
+        metadata.put("sourceField", relationParts.sourceField());
+        metadata.put("targetField", relationParts.targetField());
+        metadata.put("relationType", "join");
+        metadata.put("relationTables", List.of(relationParts.sourceTable(), relationParts.targetTable()));
+        metadata.put("relationFields", List.of(relationParts.sourceField(), relationParts.targetField()));
+        metadata.put("topics", inferTopics(relationParts.sourceTable(), relationParts.targetTable(), relationParts.sourceField(), relationParts.targetField()));
+    }
+
+    private List<String> extractBulletLines(String content) {
+        return Arrays.stream(content.split("\\R"))
+                .map(String::trim)
+                .filter(line -> !line.isBlank())
+                .map(line -> line.startsWith("-") ? line.substring(1).trim() : line)
+                .filter(line -> !line.isBlank())
+                .toList();
+    }
+
+    private String buildSingleRelationChunk(String tableName, String tableCnName, String tableType, String relationLine) {
+        StringBuilder builder = new StringBuilder("### TABLE: ").append(tableName).append('\n');
+        appendSection(builder, SECTION_CN_NAME, tableCnName);
+        appendSection(builder, SECTION_TABLE_TYPE, tableType);
+        builder.append("#### ").append(SECTION_RELATIONS).append('\n')
+                .append(relationLine.trim());
+        return builder.toString().trim();
+    }
+
+    private String buildTopLevelSqlRelationChunk(String relationLine) {
+        return ("## " + TOP_LEVEL_SQL_RELATION_EXAMPLES + "\n- " + relationLine.trim()).trim();
+    }
+
+    private RelationParts parseArrowRelation(String relationLine) {
+        String[] pair = relationLine.split("->");
+        if (pair.length != 2) {
+            return null;
+        }
+        return parseQualifiedRelation(pair[0], pair[1]);
+    }
+
+    private RelationParts parseEqualsRelation(String relationLine) {
+        int index = relationLine.indexOf('：');
+        String normalized = index >= 0 ? relationLine.substring(index + 1).trim() : relationLine.trim();
+        String[] pair = normalized.split("=");
+        if (pair.length != 2) {
+            return null;
+        }
+        return parseQualifiedRelation(pair[0], pair[1]);
+    }
+
+    private RelationParts parseQualifiedRelation(String left, String right) {
+        String[] leftParts = left.trim().split("\\.");
+        String[] rightParts = right.trim().split("\\.");
+        if (leftParts.length != 2 || rightParts.length != 2) {
+            return null;
+        }
+        return new RelationParts(leftParts[0].trim(), leftParts[1].trim(), rightParts[0].trim(), rightParts[1].trim());
+    }
+
+    private List<String> inferTopics(String sourceTable, String targetTable, String sourceField, String targetField) {
+        LinkedHashMap<String, Boolean> topicMap = new LinkedHashMap<>();
+        addTopic(topicMap, sourceTable);
+        addTopic(topicMap, targetTable);
+        if (isTimeField(sourceField) || isTimeField(targetField)) {
+            topicMap.put("time", true);
+        }
+        return new ArrayList<>(topicMap.keySet());
+    }
+
+    private void addTopic(Map<String, Boolean> topicMap, String tableName) {
+        if (tableName == null) {
+            return;
+        }
+        if (tableName.contains("sales")) {
+            topicMap.put("sales", true);
+        }
+        if (tableName.contains("inventory")) {
+            topicMap.put("inventory", true);
+        }
+        if (tableName.contains("customer")) {
+            topicMap.put("customer", true);
+        }
+        if (tableName.contains("product")) {
+            topicMap.put("product", true);
+        }
+        if (tableName.contains("store")) {
+            topicMap.put("store", true);
+        }
+        if (tableName.contains("date")) {
+            topicMap.put("time", true);
+        }
+    }
+
+    private boolean isTimeField(String fieldName) {
+        return fieldName != null && (fieldName.contains("date") || fieldName.contains("time") || fieldName.contains("year")
+                || fieldName.contains("month") || fieldName.contains("day") || fieldName.contains("quarter") || fieldName.contains("weekday"));
+    }
+
+    private boolean isMetricField(String fieldName) {
+        return fieldName != null && (fieldName.contains("amount") || fieldName.contains("quantity")
+                || fieldName.contains("price") || fieldName.contains("discount") || fieldName.contains("count"));
+    }
+
+    private boolean isPrimaryLikeField(String fieldName) {
+        return fieldName != null && (fieldName.endsWith("_id") || fieldName.equalsIgnoreCase("id"));
     }
 
     private int findFirstMarkdownTableLine(List<String> lines) {
@@ -558,6 +769,9 @@ public class BiSchemaMarkdownSplitter extends TextSplitter {
 
     private boolean hasText(String value) {
         return value != null && !value.isBlank();
+    }
+
+    private record RelationParts(String sourceTable, String sourceField, String targetTable, String targetField) {
     }
 
     private record TableBlock(String tableName, String content, int start, int end) {

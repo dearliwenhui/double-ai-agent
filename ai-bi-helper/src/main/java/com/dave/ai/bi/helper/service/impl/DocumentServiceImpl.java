@@ -1,6 +1,7 @@
 package com.dave.ai.bi.helper.service.impl;
 
 import com.dave.ai.bi.helper.service.DocumentService;
+import com.dave.ai.bi.helper.infrastructure.rag.repository.SchemaDocumentRepository;
 import com.dave.ai.bi.helper.spliter.BiSchemaMarkdownSplitter;
 import jakarta.annotation.Resource;
 import org.springframework.ai.document.Document;
@@ -22,6 +23,9 @@ public class DocumentServiceImpl implements DocumentService {
     @Resource
     private BiSchemaMarkdownSplitter biSchemaMarkdownSplitter;
 
+    @Resource
+    private SchemaDocumentRepository schemaDocumentRepository;
+
     /**
      * <pre>
      * 业务逻辑
@@ -40,6 +44,7 @@ public class DocumentServiceImpl implements DocumentService {
         TikaDocumentReader tikaDocumentReader = new TikaDocumentReader(file.getResource());
         List<Document> documents = tikaDocumentReader.get();
         List<Document> splitDocuments = biSchemaMarkdownSplitter.apply(documents);
+        schemaDocumentRepository.refreshFromDocuments(splitDocuments);
 
         // 向量化接口单次请求条数有限，入库前按固定批次拆开提交。
         addDocumentsInBatch(splitDocuments);

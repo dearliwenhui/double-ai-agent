@@ -8,6 +8,7 @@ import com.alibaba.cloud.ai.graph.action.AsyncEdgeAction;
 import com.alibaba.cloud.ai.graph.action.AsyncNodeAction;
 import com.alibaba.cloud.ai.graph.exception.GraphStateException;
 import com.alibaba.cloud.ai.graph.state.strategy.ReplaceStrategy;
+import com.dave.ai.bi.helper.application.rag.service.SchemaRetrievalPipeline;
 import com.dave.ai.bi.helper.edges.EvaluateEdge;
 import com.dave.ai.bi.helper.nodes.CsvSqlAndCreateCsvNode;
 import com.dave.ai.bi.helper.nodes.EvaluateNode;
@@ -16,7 +17,6 @@ import com.dave.ai.bi.helper.nodes.SendEmailNode;
 import com.dave.ai.bi.helper.service.EmailService;
 import jakarta.annotation.Resource;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -27,13 +27,13 @@ import java.util.Map;
 public class GraphConfig {
 
     @Resource
-    private VectorStore vectorStore;
-
-    @Resource
     private JdbcTemplate jdbcTemplate;
 
     @Resource
     private EmailService emailService;
+
+    @Resource
+    private SchemaRetrievalPipeline schemaRetrievalPipeline;
 
     @Bean
     public CompiledGraph graph(ChatClient.Builder builder) throws GraphStateException {
@@ -52,8 +52,8 @@ public class GraphConfig {
 
         StateGraph stateGraph = new StateGraph("biHelperGraph", keyStrategyFactory);
 
-        stateGraph.addNode("GenSQLNode", AsyncNodeAction.node_async(new GenSQLNode(builder, vectorStore)));
-        stateGraph.addNode("EvaluateNode", AsyncNodeAction.node_async(new EvaluateNode(builder, vectorStore)));
+        stateGraph.addNode("GenSQLNode", AsyncNodeAction.node_async(new GenSQLNode(builder, schemaRetrievalPipeline)));
+        stateGraph.addNode("EvaluateNode", AsyncNodeAction.node_async(new EvaluateNode(builder, schemaRetrievalPipeline)));
         stateGraph.addNode("ExecSqlAndCreateCsvNode", AsyncNodeAction.node_async(new CsvSqlAndCreateCsvNode(jdbcTemplate)));
         stateGraph.addNode("SendEmailNode", AsyncNodeAction.node_async(new SendEmailNode(emailService)));
 
