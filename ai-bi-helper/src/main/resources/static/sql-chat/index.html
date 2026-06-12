@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQL Copilot 工作台</title>
+    <style>
+        :root {
+            --bg: #f5f1e8;
+            --panel: rgba(255, 252, 247, 0.94);
+            --ink: #1f2937;
+            --muted: #6b7280;
+            --accent: #b45309;
+            --accent-soft: #f59e0b;
+            --line: rgba(148, 163, 184, 0.35);
+            --danger: #b91c1c;
+            --ok: #15803d;
+            --shadow: 0 18px 42px rgba(15, 23, 42, 0.12);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+            color: var(--ink);
+            background:
+                    radial-gradient(circle at top left, rgba(245, 158, 11, 0.22), transparent 30%),
+                    radial-gradient(circle at bottom right, rgba(180, 83, 9, 0.16), transparent 24%),
+                    linear-gradient(135deg, #efe4d1 0%, #f8f5ef 52%, #efe8db 100%);
+            min-height: 100vh;
+        }
+
+        .layout {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            min-height: 100vh;
+        }
+
+        .sidebar,
+        .main {
+            padding: 20px;
+        }
+
+        .sidebar {
+            border-right: 1px solid var(--line);
+            background: rgba(255, 248, 240, 0.72);
+            backdrop-filter: blur(10px);
+        }
+
+        .main {
+            display: grid;
+            grid-template-rows: auto 1fr;
+            gap: 18px;
+        }
+
+        .panel {
+            background: var(--panel);
+            border: 1px solid rgba(255, 255, 255, 0.7);
+            border-radius: 18px;
+            box-shadow: var(--shadow);
+        }
+
+        .section {
+            padding: 18px;
+        }
+
+        h1, h2, h3 {
+            margin: 0 0 12px;
+            font-weight: 700;
+        }
+
+        h1 {
+            font-size: 22px;
+            letter-spacing: 0.02em;
+        }
+
+        h2 {
+            font-size: 16px;
+        }
+
+        p, small, label {
+            color: var(--muted);
+        }
+
+        input, textarea, button {
+            font: inherit;
+        }
+
+        input, textarea {
+            width: 100%;
+            padding: 12px 14px;
+            border-radius: 12px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.88);
+            color: var(--ink);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 120px;
+        }
+
+        button {
+            border: none;
+            border-radius: 999px;
+            padding: 10px 16px;
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-soft) 100%);
+            color: #fff;
+            cursor: pointer;
+            transition: transform 160ms ease, opacity 160ms ease;
+        }
+
+        button:hover {
+            transform: translateY(-1px);
+        }
+
+        button:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .ghost {
+            background: #fff;
+            color: var(--ink);
+            border: 1px solid var(--line);
+        }
+
+        .stack {
+            display: grid;
+            gap: 12px;
+        }
+
+        .session-list {
+            display: grid;
+            gap: 10px;
+            margin-top: 14px;
+        }
+
+        .session-item {
+            padding: 12px;
+            border-radius: 14px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.72);
+            cursor: pointer;
+        }
+
+        .session-item.active {
+            border-color: rgba(180, 83, 9, 0.45);
+            background: rgba(255, 245, 230, 0.95);
+        }
+
+        .workspace {
+            display: grid;
+            grid-template-columns: 1.15fr 0.85fr;
+            gap: 18px;
+        }
+
+        .chat-list {
+            display: grid;
+            gap: 10px;
+            max-height: 360px;
+            overflow: auto;
+            padding-right: 6px;
+        }
+
+        .bubble {
+            padding: 12px 14px;
+            border-radius: 14px;
+            border: 1px solid var(--line);
+            background: #fff;
+        }
+
+        .bubble.user {
+            background: #fff7ed;
+        }
+
+        .bubble.assistant {
+            background: #f8fafc;
+        }
+
+        .meta {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 8px;
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            border-radius: 999px;
+            padding: 6px 12px;
+            font-size: 12px;
+            background: rgba(180, 83, 9, 0.12);
+            color: var(--accent);
+        }
+
+        .danger {
+            color: var(--danger);
+        }
+
+        .success {
+            color: var(--ok);
+        }
+
+        .grid-two {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-family: "Cascadia Code", "Consolas", monospace;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        th, td {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--line);
+            text-align: left;
+            vertical-align: top;
+        }
+
+        .table-wrap {
+            max-height: 260px;
+            overflow: auto;
+        }
+
+        .status-line {
+            min-height: 22px;
+            font-size: 13px;
+            color: var(--accent);
+        }
+
+        @media (max-width: 1080px) {
+            .layout,
+            .workspace,
+            .grid-two {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="layout">
+    <aside class="sidebar">
+        <div class="panel section stack">
+            <div>
+                <h1>SQL Copilot</h1>
+                <p>企业级 AI BI 助手工作台</p>
+            </div>
+            <label for="userIdInput">用户 ID</label>
+            <input id="userIdInput" placeholder="输入 userId 以加载历史会话">
+            <div class="toolbar">
+                <button id="loadSessionsBtn">加载历史</button>
+                <button id="newSessionBtn" class="ghost">新建会话</button>
+            </div>
+        </div>
+
+        <div class="panel section">
+            <h2>历史会话</h2>
+            <div id="sessionList" class="session-list"></div>
+        </div>
+    </aside>
+
+    <main class="main">
+        <section class="panel section stack">
+            <div class="grid-two">
+                <div>
+                    <h2>当前会话</h2>
+                    <div id="currentSessionText">未选择会话</div>
+                </div>
+                <div>
+                    <h2>运行状态</h2>
+                    <div id="statusLine" class="status-line">等待开始</div>
+                </div>
+            </div>
+            <label for="questionInput">业务问题</label>
+            <textarea id="questionInput" placeholder="例如：帮我统计最近30天华东区各门店销售额 Top10"></textarea>
+            <div class="toolbar">
+                <button id="sendQuestionBtn">流式生成 SQL</button>
+            </div>
+        </section>
+
+        <section class="workspace">
+            <div class="stack">
+                <div class="panel section">
+                    <h2>对话记录</h2>
+                    <div id="chatList" class="chat-list"></div>
+                </div>
+
+                <div class="panel section stack">
+                    <div class="toolbar">
+                        <h2 style="margin-right:auto;">SQL 工作区</h2>
+                        <span id="previewGateBadge" class="badge">需先生成 SQL</span>
+                    </div>
+                    <textarea id="sqlEditor" placeholder="生成后的 SQL 会显示在这里，支持人工修改"></textarea>
+                    <div class="toolbar">
+                        <button id="previewBtn" disabled>预览前 20 条</button>
+                        <button id="exportBtn" disabled>确认生成 CSV</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stack">
+                <div class="panel section stack">
+                    <h2>评估结果</h2>
+                    <div class="grid-two">
+                        <div><strong>结论：</strong><span id="decisionText">-</span></div>
+                        <div><strong>分数：</strong><span id="scoreText">-</span></div>
+                        <div><strong>风险：</strong><span id="riskText">-</span></div>
+                        <div><strong>可预览：</strong><span id="passText">-</span></div>
+                    </div>
+                    <div>
+                        <strong>问题清单</strong>
+                        <pre id="issuesText">-</pre>
+                    </div>
+                    <div>
+                        <strong>建议</strong>
+                        <pre id="suggestionsText">-</pre>
+                    </div>
+                </div>
+
+                <div class="panel section stack">
+                    <h2>预览结果</h2>
+                    <div id="previewMessage" class="status-line">尚未预览</div>
+                    <div class="table-wrap">
+                        <table id="previewTable"></table>
+                    </div>
+                </div>
+
+                <div class="panel section stack">
+                    <h2>导出结果</h2>
+                    <pre id="exportResult">尚未导出</pre>
+                </div>
+            </div>
+        </section>
+    </main>
+</div>
+
+<script>
+    const state = {
+        userId: "",
+        sessionId: "",
+        sessions: [],
+        detail: null,
+        previewReady: false
+    };
+
+    const el = {
+        userIdInput: document.getElementById("userIdInput"),
+        sessionList: document.getElementById("sessionList"),
+        currentSessionText: document.getElementById("currentSessionText"),
+        statusLine: document.getElementById("statusLine"),
+        questionInput: document.getElementById("questionInput"),
+        sendQuestionBtn: document.getElementById("sendQuestionBtn"),
+        chatList: document.getElementById("chatList"),
+        sqlEditor: document.getElementById("sqlEditor"),
+        previewBtn: document.getElementById("previewBtn"),
+        exportBtn: document.getElementById("exportBtn"),
+        previewGateBadge: document.getElementById("previewGateBadge"),
+        decisionText: document.getElementById("decisionText"),
+        scoreText: document.getElementById("scoreText"),
+        riskText: document.getElementById("riskText"),
+        passText: document.getElementById("passText"),
+        issuesText: document.getElementById("issuesText"),
+        suggestionsText: document.getElementById("suggestionsText"),
+        previewMessage: document.getElementById("previewMessage"),
+        previewTable: document.getElementById("previewTable"),
+        exportResult: document.getElementById("exportResult"),
+        loadSessionsBtn: document.getElementById("loadSessionsBtn"),
+        newSessionBtn: document.getElementById("newSessionBtn")
+    };
+
+    el.loadSessionsBtn.addEventListener("click", loadSessions);
+    el.newSessionBtn.addEventListener("click", createSession);
+    el.sendQuestionBtn.addEventListener("click", streamMessage);
+    el.previewBtn.addEventListener("click", previewSql);
+    el.exportBtn.addEventListener("click", exportSql);
+
+    async function loadSessions() {
+        try {
+            const userId = el.userIdInput.value.trim();
+            if (!userId) {
+                setStatus("请先输入 userId", true);
+                return;
+            }
+            state.userId = userId;
+            const result = await request(`/sql-chat/session/list?userId=${encodeURIComponent(userId)}`);
+            state.sessions = result.data || [];
+            renderSessions();
+            if (!state.sessions.length) {
+                setStatus("没有历史会话，可以先新建会话");
+            }
+        } catch (error) {
+            setStatus(error.message || "加载历史会话失败", true);
+        }
+    }
+
+    async function createSession() {
+        try {
+            const userId = el.userIdInput.value.trim();
+            if (!userId) {
+                setStatus("请先输入 userId", true);
+                return;
+            }
+            state.userId = userId;
+            const result = await request(`/sql-chat/session/start?userId=${encodeURIComponent(userId)}`, { method: "POST" });
+            state.sessionId = result.data.sessionId;
+            state.previewReady = false;
+            clearWorkspace();
+            await loadSessions();
+            await loadSessionDetail(state.sessionId);
+            setStatus("新会话已创建");
+        } catch (error) {
+            setStatus(error.message || "创建会话失败", true);
+        }
+    }
+
+    async function loadSessionDetail(sessionId) {
+        try {
+            const result = await request(`/sql-chat/session/detail?sessionId=${encodeURIComponent(sessionId)}&userId=${encodeURIComponent(state.userId)}`);
+            state.sessionId = sessionId;
+            state.detail = result.data;
+            state.previewReady = state.detail.status === "PREVIEW_SUCCESS" || state.detail.status === "EXPORTED";
+            renderDetail();
+            renderSessions();
+        } catch (error) {
+            setStatus(error.message || "加载会话详情失败", true);
+        }
+    }
+
+    function renderSessions() {
+        el.sessionList.innerHTML = "";
+        state.sessions.forEach(session => {
+            const div = document.createElement("div");
+            div.className = "session-item" + (session.sessionId === state.sessionId ? " active" : "");
+            div.innerHTML = `
+                <div><strong>${escapeHtml(session.sessionTitle || "未命名会话")}</strong></div>
+                <div class="meta"><span>${escapeHtml(session.status || "-")}</span><span>${escapeHtml(formatDateTime(session.updatedTime))}</span></div>
+                <div>${escapeHtml(session.lastQuestion || "暂无提问")}</div>
+            `;
+            div.addEventListener("click", () => loadSessionDetail(session.sessionId));
+            el.sessionList.appendChild(div);
+        });
+    }
+
+    function renderDetail() {
+        const detail = state.detail;
+        if (!detail) {
+            return;
+        }
+        el.currentSessionText.textContent = `${detail.sessionTitle} / ${detail.sessionId}`;
+        el.chatList.innerHTML = "";
+        (detail.messages || []).forEach(message => renderMessageBubble(message.role, message.content, message.createdTime, message));
+        el.sqlEditor.value = detail.lastEditedSql || detail.lastGeneratedSql || "";
+        renderEvaluate(detail.lastEvaluateResult || {});
+        el.previewGateBadge.textContent = state.previewReady ? "已完成预览，可导出" : "需先完成预览";
+        el.previewBtn.disabled = !detail.sessionId;
+        el.exportBtn.disabled = !state.previewReady;
+        if (detail.lastExportPath) {
+            el.exportResult.textContent = `最后导出文件：${detail.lastExportPath}`;
+        }
+    }
+
+    function renderMessageBubble(role, content, createdTime, message) {
+        const bubble = document.createElement("div");
+        bubble.className = `bubble ${role || "assistant"}`;
+        bubble.innerHTML = `
+            <div class="meta">
+                <span>${escapeHtml(role || "-")} / ${escapeHtml(message?.messageType || "-")}</span>
+                <span>${escapeHtml(formatDateTime(createdTime))}</span>
+            </div>
+            <div>${escapeHtml(content || "")}</div>
+        `;
+        if (message?.generatedSql) {
+            const sql = document.createElement("pre");
+            sql.textContent = message.generatedSql;
+            bubble.appendChild(sql);
+        }
+        el.chatList.appendChild(bubble);
+        el.chatList.scrollTop = el.chatList.scrollHeight;
+    }
+
+    function renderEvaluate(result) {
+        el.decisionText.textContent = result.finalDecision ?? "-";
+        el.scoreText.textContent = result.score ?? "-";
+        el.riskText.textContent = result.riskLevel ?? "-";
+        el.passText.textContent = String(result.pass ?? "-");
+        el.issuesText.textContent = Array.isArray(result.issues) && result.issues.length ? result.issues.join("\n") : "-";
+        el.suggestionsText.textContent = Array.isArray(result.suggestions) && result.suggestions.length ? result.suggestions.join("\n") : "-";
+    }
+
+    async function streamMessage() {
+        const userInput = el.questionInput.value.trim();
+        if (!state.sessionId || !state.userId) {
+            setStatus("请先输入 userId 并创建或选择会话", true);
+            return;
+        }
+        if (!userInput) {
+            setStatus("请输入业务问题", true);
+            return;
+        }
+        state.previewReady = false;
+        el.exportBtn.disabled = true;
+        renderMessageBubble("user", userInput, new Date().toISOString(), { messageType: "USER_PROMPT" });
+        setStatus("开始流式生成...");
+
+        const url = `/sql-chat/message/stream?sessionId=${encodeURIComponent(state.sessionId)}&userId=${encodeURIComponent(state.userId)}&userInput=${encodeURIComponent(userInput)}`;
+        const eventSource = new EventSource(url);
+
+        eventSource.addEventListener("status", event => {
+            const payload = JSON.parse(event.data);
+            setStatus(payload.message || "处理中");
+        });
+
+        eventSource.addEventListener("completed", async event => {
+            const payload = JSON.parse(event.data);
+            setStatus(payload.message || "生成完成");
+            const data = payload.payload || {};
+            renderMessageBubble("assistant", data.assistantReply, new Date().toISOString(), { messageType: "AI_RESULT", generatedSql: data.generatedSql });
+            el.sqlEditor.value = data.generatedSql || "";
+            renderEvaluate(data.evaluateResult || {});
+            el.previewBtn.disabled = false;
+            el.previewGateBadge.textContent = "已生成 SQL，建议先预览";
+            eventSource.close();
+            el.questionInput.value = "";
+            await loadSessions();
+            await loadSessionDetail(state.sessionId);
+        });
+
+        eventSource.addEventListener("error", event => {
+            setStatus("生成过程失败，请稍后重试", true);
+            eventSource.close();
+        });
+    }
+
+    async function previewSql() {
+        try {
+            const sql = el.sqlEditor.value.trim();
+            if (!state.sessionId || !state.userId || !sql) {
+                setStatus("请先生成或输入 SQL", true);
+                return;
+            }
+            const result = await request("/sql-chat/sql/preview", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ sessionId: state.sessionId, userId: state.userId, sql })
+            });
+            const data = result.data;
+            state.previewReady = true;
+            el.exportBtn.disabled = false;
+            el.previewGateBadge.textContent = "预览成功，可导出";
+            el.previewMessage.textContent = `${data.message}，返回 ${data.rows.length} 条 / 限制 ${data.limit} 条`;
+            renderTable(data.columns || [], data.rows || []);
+            setStatus("预览成功");
+            await loadSessions();
+            await loadSessionDetail(state.sessionId);
+        } catch (error) {
+            setStatus(error.message || "预览失败", true);
+        }
+    }
+
+    async function exportSql() {
+        try {
+            const sql = el.sqlEditor.value.trim();
+            if (!state.previewReady) {
+                setStatus("请先成功预览前 20 条数据", true);
+                return;
+            }
+            const result = await request("/sql-chat/sql/export", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ sessionId: state.sessionId, userId: state.userId, sql })
+            });
+            const data = result.data;
+            el.exportResult.textContent = `导出成功\n文件路径: ${data.csvFilePath}\n时间: ${data.exportedAt}`;
+            setStatus("CSV 导出完成");
+            await loadSessions();
+            await loadSessionDetail(state.sessionId);
+        } catch (error) {
+            setStatus(error.message || "导出失败", true);
+        }
+    }
+
+    function renderTable(columns, rows) {
+        if (!columns.length) {
+            el.previewTable.innerHTML = "<tr><td>没有预览数据</td></tr>";
+            return;
+        }
+        const thead = `<thead><tr>${columns.map(column => `<th>${escapeHtml(column)}</th>`).join("")}</tr></thead>`;
+        const tbody = `<tbody>${rows.map(row => `<tr>${columns.map(column => `<td>${escapeHtml(formatCell(row[column]))}</td>`).join("")}</tr>`).join("")}</tbody>`;
+        el.previewTable.innerHTML = `${thead}${tbody}`;
+    }
+
+    async function request(url, options = {}) {
+        const response = await fetch(url, options);
+        const json = await response.json();
+        if (!response.ok || json.code !== 200) {
+            throw new Error(json.msg || "请求失败");
+        }
+        return json;
+    }
+
+    function setStatus(message, isError = false) {
+        el.statusLine.textContent = message;
+        el.statusLine.className = "status-line" + (isError ? " danger" : "");
+    }
+
+    function clearWorkspace() {
+        el.currentSessionText.textContent = "未选择会话";
+        el.chatList.innerHTML = "";
+        el.sqlEditor.value = "";
+        el.previewBtn.disabled = true;
+        el.exportBtn.disabled = true;
+        el.previewGateBadge.textContent = "需先生成 SQL";
+        renderEvaluate({});
+        el.previewTable.innerHTML = "";
+        el.previewMessage.textContent = "尚未预览";
+        el.exportResult.textContent = "尚未导出";
+    }
+
+    function formatDateTime(value) {
+        if (!value) {
+            return "-";
+        }
+        return String(value).replace("T", " ").slice(0, 19);
+    }
+
+    function formatCell(value) {
+        if (value === null || value === undefined) {
+            return "";
+        }
+        if (typeof value === "object") {
+            return JSON.stringify(value);
+        }
+        return String(value);
+    }
+
+    function escapeHtml(text) {
+        return String(text ?? "")
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll("\"", "&quot;")
+            .replaceAll("'", "&#39;");
+    }
+</script>
+</body>
+</html>
